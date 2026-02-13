@@ -323,12 +323,12 @@ try:
                 usage = float(parts[0])
                 name = parts[1]
                 if "waybar" in parts[2] if len(parts)>2 else "": continue
-                if len(name) > 15: name = name[:14] + "…"
+                if len(name) > 18: name = name[:17] + "…"
                 color = get_core_color(usage)
                 # Estimate cores used (100% = 1 core)
                 cores_used = max(1, int(round(usage / 100)))
                 core_text = "core" if cores_used == 1 else "cores"
-                process_lines.append(f" • {name:<15} {span(f'{usage:>6.1f}% ({cores_used} {core_text})', color)}")
+                process_lines.append(f" • {name:<18} {span(f'{usage:>6.1f}% ({cores_used} {core_text})', color)}")
                 count += 1
             except Exception:
                 continue

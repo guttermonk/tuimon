@@ -402,7 +402,7 @@ try:
                 rss_kb = int(parts[1])
                 name = parts[2]
                 if mem_pct < 0.1: continue  # Skip negligible processes
-                if len(name) > 15: name = name[:14] + "…"
+                if len(name) > 18: name = name[:17] + "…"
                 # Convert RSS to human readable
                 if rss_kb >= 1024 * 1024:
                     mem_str = f"{rss_kb / (1024 * 1024):.1f}GB"
@@ -411,7 +411,7 @@ try:
                 else:
                     mem_str = f"{rss_kb}KB"
                 color = get_color(mem_pct, 'mem_storage')
-                tooltip_lines.append(f" • {name:<15} {span(f'{mem_pct:>5.1f}% ({mem_str})', color)}")
+                tooltip_lines.append(f" • {name:<18} {span(f'{mem_pct:>5.1f}% ({mem_str})', color)}")
                 count += 1
             except Exception:
                 continue

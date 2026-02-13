@@ -828,30 +828,30 @@ def main():
             # Dedicated VRAM GPU (NVIDIA, AMD): show memory percentage and MB
             for p in procs:
                 name = p['name']
-                if len(name) > 12: name = name[:11] + "…"
+                if len(name) > 18: name = name[:17] + "…"
                 mem = p.get('mem', 0)
                 if mem > 0:
                     mem_p = (mem / vram_total * 100)
                     color = get_color(mem_p, 'gpu_power')
-                    process_lines.append(f" • {name:<12} {span(f'{mem_p:>5.1f}% ({mem}MB)', color)}")
+                    process_lines.append(f" • {name:<18} {span(f'{mem_p:>5.1f}% ({mem}MB)', color)}")
                 else:
-                    process_lines.append(f" • {name:<12}")
+                    process_lines.append(f" • {name:<18}")
         else:
             # Shared memory GPU (Intel): calculate relative activity from engine time
             total_activity = sum(p.get('mem', 0) for p in procs)
             for p in procs:
                 name = p['name']
-                if len(name) > 12: name = name[:11] + "…"
+                if len(name) > 18: name = name[:17] + "…"
                 activity = p.get('mem', 0)
                 if total_activity > 0 and gpu_percent > 0:
                     # Distribute GPU utilization based on relative engine activity
                     rel_pct = (activity / total_activity) * gpu_percent
                     color = get_color(rel_pct, 'gpu_power')
-                    process_lines.append(f" • {name:<12} {span(f'~{rel_pct:>4.1f}%', color)}")
+                    process_lines.append(f" • {name:<18} {span(f'~{rel_pct:>4.1f}%', color)}")
                 else:
                     # No activity data, just show as active
                     color = get_color(gpu_percent, 'gpu_power')
-                    process_lines.append(f" • {name:<12} {span('active', color)}")
+                    process_lines.append(f" • {name:<18} {span('active', color)}")
     else:
         process_lines.append(" • No GPU processes detected")
 
