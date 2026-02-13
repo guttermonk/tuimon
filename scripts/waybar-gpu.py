@@ -833,7 +833,7 @@ def main():
                 if mem > 0:
                     mem_p = (mem / vram_total * 100)
                     color = get_color(mem_p, 'gpu_power')
-                    process_lines.append(f" • {name:<12} {span(f'󰘚 {mem_p:>5.1f}% ({mem}MB)', color)}")
+                    process_lines.append(f" • {name:<12} {span(f'{mem_p:>5.1f}% ({mem}MB)', color)}")
                 else:
                     process_lines.append(f" • {name:<12}")
         else:
@@ -847,11 +847,11 @@ def main():
                     # Distribute GPU utilization based on relative engine activity
                     rel_pct = (activity / total_activity) * gpu_percent
                     color = get_color(rel_pct, 'gpu_power')
-                    process_lines.append(f" • {name:<12} {span(f'󰘚 ~{rel_pct:>4.1f}%', color)}")
+                    process_lines.append(f" • {name:<12} {span(f'~{rel_pct:>4.1f}%', color)}")
                 else:
                     # No activity data, just show as active
                     color = get_color(gpu_percent, 'gpu_power')
-                    process_lines.append(f" • {name:<12} {span('󰘚 active', color)}")
+                    process_lines.append(f" • {name:<12} {span('active', color)}")
     else:
         process_lines.append(" • No GPU processes detected")
 

@@ -411,7 +411,7 @@ try:
                 else:
                     mem_str = f"{rss_kb}KB"
                 color = get_color(mem_pct, 'mem_storage')
-                tooltip_lines.append(f" • {name:<15} {span(f'󰘚 {mem_pct:>5.1f}% ({mem_str})', color)}")
+                tooltip_lines.append(f" • {name:<15} {span(f'{mem_pct:>5.1f}% ({mem_str})', color)}")
                 count += 1
             except Exception:
                 continue

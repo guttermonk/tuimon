@@ -328,7 +328,7 @@ try:
                 # Estimate cores used (100% = 1 core)
                 cores_used = max(1, int(round(usage / 100)))
                 core_text = "core" if cores_used == 1 else "cores"
-                process_lines.append(f" • {name:<15} {span(f'󰘚 {usage:>6.1f}% ({cores_used} {core_text})', color)}")
+                process_lines.append(f" • {name:<15} {span(f'{usage:>6.1f}% ({cores_used} {core_text})', color)}")
                 count += 1
             except Exception:
                 continue
