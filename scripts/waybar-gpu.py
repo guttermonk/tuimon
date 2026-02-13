@@ -823,14 +823,14 @@ def main():
     process_lines.append("Top GPU Processes:")
     if stats["procs"]:
         procs = sorted(stats["procs"], key=lambda x: x.get('mem', 0), reverse=True)
-        for p in procs[:4]:
+        for p in procs[:5]:
             name = p['name']
             if len(name) > 12: name = name[:11] + "…"
             mem = p.get('mem', 0)
             if mem > 0 and vram_total > 0:
                 mem_p = (mem / vram_total * 100)
                 color = get_color(mem_p, 'gpu_power')
-                process_lines.append(f" • {name:<12} {span(f'󰘚 {mem}MB', color)}")
+                process_lines.append(f" • {name:<12} {span(f'󰘚 {mem_p:>5.1f}% ({mem}MB)', color)}")
             else:
                 process_lines.append(f" • {name:<12}")
     else:

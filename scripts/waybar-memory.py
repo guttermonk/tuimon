@@ -386,6 +386,40 @@ tooltip_lines.insert(0, "─" * tooltip_width)
 tooltip_lines.append("─" * tooltip_width)
 tooltip_lines.append(legend_centered)
 
+# Top Memory Processes
+tooltip_lines.append("")
+tooltip_lines.append("Top Memory Processes:")
+try:
+    ps_cmd = ["ps", "-eo", "pmem,rss,comm", "--sort=-pmem", "--no-headers"]
+    ps_output = subprocess.check_output(ps_cmd, text=True).strip()
+    count = 0
+    for line in ps_output.split('\n'):
+        if count >= 5: break
+        parts = line.strip().split(maxsplit=2)
+        if len(parts) >= 3:
+            try:
+                mem_pct = float(parts[0])
+                rss_kb = int(parts[1])
+                name = parts[2]
+                if mem_pct < 0.1: continue  # Skip negligible processes
+                if len(name) > 15: name = name[:14] + "…"
+                # Convert RSS to human readable
+                if rss_kb >= 1024 * 1024:
+                    mem_str = f"{rss_kb / (1024 * 1024):.1f}GB"
+                elif rss_kb >= 1024:
+                    mem_str = f"{rss_kb / 1024:.0f}MB"
+                else:
+                    mem_str = f"{rss_kb}KB"
+                color = get_color(mem_pct, 'mem_storage')
+                tooltip_lines.append(f" • {name:<15} {span(f'󰘚 {mem_pct:>5.1f}% ({mem_str})', color)}")
+                count += 1
+            except Exception:
+                continue
+    if count == 0:
+        tooltip_lines.append(f" • {span('No significant memory usage', COLORS['bright_black'])}")
+except Exception:
+    pass
+
 tooltip_lines.append("")
 tooltip_lines.append(f"<span foreground='{COLORS['white']}'>{'┈' * tooltip_width}</span>")
 tooltip_lines.append("󰍽 LMB: Btop")

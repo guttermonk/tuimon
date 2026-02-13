@@ -310,13 +310,13 @@ if active_count == 0:
 # Top Processes
 process_lines = []
 process_lines.append("")
-process_lines.append("Top Current Processes:")
+process_lines.append("Top CPU Processes:")
 try:
     ps_cmd = ["ps", "-eo", "pcpu,comm,args", "--sort=-pcpu", "--no-headers"]
     ps_output = subprocess.check_output(ps_cmd, text=True).strip()
     count = 0
     for line in ps_output.split('\n'):
-        if count >= 3: break
+        if count >= 5: break
         parts = line.strip().split(maxsplit=2)
         if len(parts) >= 2:
             try:
