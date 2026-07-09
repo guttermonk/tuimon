@@ -141,8 +141,19 @@ in
     # TUI file managers (yazi, ranger, lf, nnn, mc, vifm) are automatically wrapped in terminal
     fileManager = "yazi";
     
-    # Update interval in seconds
+    # Global update interval in seconds (applies to modules without a
+    # per-module interval). If unset, each module uses its own default:
+    # cpu 2, gpu 2, memory 3, storage 60.
     interval = 2;
+
+    # Per-module intervals (seconds, or "once" for a single run).
+    # These take precedence over the global `interval`.
+    # cpuInterval = 2;
+    # gpuInterval = 2;
+    # memoryInterval = 3;      # live RAM usage + DIMM temps; the static DIMM
+    #                          # inventory (dmidecode) is cached per boot anyway
+    # storageInterval = 60;    # usage/IO/temps; SMART health data is cached
+    #                          # for an hour regardless of this setting
     
     # Custom colors (Catppuccin-inspired defaults)
     colors = {
@@ -215,7 +226,7 @@ If not using the home-manager module, add these to your waybar config:
   "custom/memory": {
     "exec": "waybar-memory",
     "return-type": "json",
-    "interval": 2,
+    "interval": 3,
     "tooltip": true
   },
   "custom/gpu": {
@@ -228,12 +239,18 @@ If not using the home-manager module, add these to your waybar config:
   "custom/storage": {
     "exec": "waybar-storage",
     "return-type": "json",
-    "interval": 2,
+    "interval": 60,
     "tooltip": true,
     "on-click": "xdg-open ~"
   }
 }
 ```
+
+Storage is fine at a long interval: disk usage and SMART data change slowly, and
+the heavy `smartctl -a` health read is cached internally for an hour either way.
+Memory can also be set high (or to `"once"`), but note that the live RAM usage
+percentage and DIMM temperatures only refresh on this interval — the static DIMM
+inventory from `dmidecode` is cached per boot regardless.
 
 ## Styling
 
@@ -455,12 +472,13 @@ fonts.packages = with pkgs; [
 
 **No.** These scripts use Waybar's polling model and are very lightweight:
 
-- Scripts run **briefly every 2 seconds** (configurable via `interval`) then fully exit
+- Scripts run **briefly on each interval** (2s for cpu/gpu, 3s for memory, 60s for storage by default) then fully exit
 - Each run takes ~0.2-0.3 seconds, meaning scripts are idle ~98% of the time
 - Hovering over modules to view tooltips **does not increase CPU usage** — tooltip content is generated in the same run as the bar text and cached by Waybar
 - No persistent background processes between intervals
+- Expensive hardware queries are cached: the memory module's `dmidecode` DIMM scan runs once per boot, and the storage module's `smartctl -a` health read runs at most once per hour
 
-Power consumption is comparable to running `htop` with a 2-second refresh, but lighter since processes fully terminate between intervals. To reduce power further, increase the `interval` setting (e.g., from 2 to 5 or 10 seconds).
+Power consumption is comparable to running `htop` with a 2-second refresh, but lighter since processes fully terminate between intervals. To reduce power further, increase the intervals via the global `interval` option or the per-module `cpuInterval`, `gpuInterval`, `memoryInterval`, and `storageInterval` options (each also accepts `"once"` for a single run).
 
 ## Credits
 

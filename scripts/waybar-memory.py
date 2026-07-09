@@ -169,16 +169,49 @@ def get_memory_temps():
         pass
     return temps
 
+DMIDECODE_CACHE = "/tmp/waybar_memory_dmidecode.json"
+
+def _read_dmidecode_output():
+    """
+    Returns `dmidecode --type memory` output, cached per boot.
+    The DIMM inventory cannot change without a power cycle, so there is no
+    reason to hit SMBIOS/ACPI on every refresh.
+    """
+    try:
+        with open("/proc/sys/kernel/random/boot_id") as f:
+            boot_id = f.read().strip()
+    except Exception:
+        boot_id = None
+
+    if boot_id:
+        try:
+            with open(DMIDECODE_CACHE) as f:
+                cache = json.load(f)
+            if cache.get("boot_id") == boot_id:
+                return cache.get("output", "")
+        except Exception:
+            pass
+
+    output = subprocess.check_output(["sudo", "-n", "dmidecode", "--type", "memory"], text=True, stderr=subprocess.PIPE)
+
+    if boot_id:
+        try:
+            with open(DMIDECODE_CACHE, "w") as f:
+                json.dump({"boot_id": boot_id, "output": output}, f)
+        except Exception:
+            pass
+    return output
+
 def get_memory_modules_from_dmidecode():
     """
-    Fetches RAM stick details.
+    Fetches RAM stick details (cached per boot; temperatures stay live).
     NOTE: Requires sudo permissions for dmidecode without password.
     On NixOS, use security.sudo.extraRules or enable the waybar-system-monitors NixOS module.
     """
     detected_modules = []
     real_temps = get_memory_temps()
     try:
-        output = subprocess.check_output(["sudo", "-n", "dmidecode", "--type", "memory"], text=True, stderr=subprocess.PIPE)
+        output = _read_dmidecode_output()
         
         current_module = {}
         for line in output.splitlines():

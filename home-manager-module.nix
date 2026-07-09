@@ -1,7 +1,24 @@
-{ config, lib, pkgs, ... }:
+{ config, options, lib, pkgs, ... }:
 
 let
   cfg = config.programs.waybar-system-monitors;
+
+  # Waybar accepts an integer number of seconds or the string "once"
+  intervalType = lib.types.nullOr (lib.types.either lib.types.ints.positive (lib.types.enum [ "once" ]));
+
+  # Per-module interval resolution:
+  # 1. explicit per-module option
+  # 2. global `interval` if the user set it (keeps old configs behaving identically)
+  # 3. per-module default
+  # The option's own default is injected as a definition at mkOptionDefault
+  # priority, so isDefined can't distinguish "user set it" - highestPrio can.
+  globalIntervalSet =
+    options.programs.waybar-system-monitors.interval.highestPrio
+      < (lib.mkOptionDefault null).priority;
+  resolveInterval = per: moduleDefault:
+    if per != null then per
+    else if globalIntervalSet then cfg.interval
+    else moduleDefault;
   
   waybar-system-monitors = pkgs.callPackage ./default.nix { };
 
@@ -157,7 +174,58 @@ in
     interval = lib.mkOption {
       type = lib.types.int;
       default = 2;
-      description = "Update interval in seconds for waybar modules";
+      description = ''
+        Update interval in seconds for waybar modules.
+        Applies to every module that does not have its own *Interval option set.
+        If left unset, each module uses its own default instead
+        (cpu: 2, gpu: 2, memory: 3, storage: 60).
+      '';
+    };
+
+    cpuInterval = lib.mkOption {
+      type = intervalType;
+      default = null;
+      description = ''
+        Update interval in seconds for the CPU module, or "once" for a single run.
+        Falls back to `interval` if set, otherwise 2.
+      '';
+      example = 5;
+    };
+
+    gpuInterval = lib.mkOption {
+      type = intervalType;
+      default = null;
+      description = ''
+        Update interval in seconds for the GPU module, or "once" for a single run.
+        Falls back to `interval` if set, otherwise 2.
+      '';
+      example = 5;
+    };
+
+    memoryInterval = lib.mkOption {
+      type = intervalType;
+      default = null;
+      description = ''
+        Update interval in seconds for the Memory module, or "once" for a single run.
+        Falls back to `interval` if set, otherwise 3.
+        The static DIMM inventory (dmidecode) is cached per boot regardless of this
+        setting; the interval only governs the live readings (usage, temperatures).
+        Note that a very high value or "once" freezes those live readings.
+      '';
+      example = 10;
+    };
+
+    storageInterval = lib.mkOption {
+      type = intervalType;
+      default = null;
+      description = ''
+        Update interval in seconds for the Storage module, or "once" for a single run.
+        Falls back to `interval` if set, otherwise 60.
+        SMART health/wear data (a heavy `smartctl -a` read) is cached for an hour
+        regardless of this setting; the interval only governs usage, I/O speeds,
+        and temperature.
+      '';
+      example = 120;
     };
 
     plain = lib.mkOption {
@@ -194,7 +262,7 @@ in
         exec = "${waybar-system-monitors}/bin/waybar-cpu --display=${cfg.cpuDisplay}${lib.optionalString cfg.plain " --plain"}";
         format = "{}";
         return-type = "json";
-        interval = cfg.interval;
+        interval = resolveInterval cfg.cpuInterval 2;
         tooltip = true;
         on-click = "${cfg.terminal} -e btop";
       };
@@ -203,7 +271,7 @@ in
         exec = "${waybar-system-monitors}/bin/waybar-memory${lib.optionalString cfg.plain " --plain"}";
         format = "{}";
         return-type = "json";
-        interval = cfg.interval;
+        interval = resolveInterval cfg.memoryInterval 3;
         tooltip = true;
       };
 
@@ -211,7 +279,7 @@ in
         exec = "${waybar-system-monitors}/bin/waybar-gpu --display=${cfg.gpuDisplay}${lib.optionalString cfg.plain " --plain"}";
         format = "{}";
         return-type = "json";
-        interval = cfg.interval;
+        interval = resolveInterval cfg.gpuInterval 2;
         tooltip = true;
         on-click = "${cfg.terminal} -e btop";
       };
@@ -220,7 +288,7 @@ in
         exec = "${waybar-system-monitors}/bin/waybar-storage${lib.optionalString cfg.plain " --plain"}";
         format = "{}";
         return-type = "json";
-        interval = cfg.interval;
+        interval = resolveInterval cfg.storageInterval 60;
         tooltip = true;
         on-click = fileManagerCommand;
       };

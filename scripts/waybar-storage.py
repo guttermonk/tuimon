@@ -276,19 +276,29 @@ def get_drive_temp(mountpoint):
         pass
     return None
 
-def get_smart_info(mountpoint):
+# SMART health/wear changes on the order of hours, and `smartctl -a` is a
+# heavy read through the drive's admin queue - don't run it every refresh.
+SMART_CACHE_TTL = 3600
+
+def get_smart_info(mountpoint, smart_cache):
     """
     Fetches basic health info via smartctl.
     Requires sudo NOPASSWD for smartctl, or will return N/A values.
+    Results are cached in smart_cache (persisted via the history file) for
+    SMART_CACHE_TTL seconds.
     """
     health, lifespan, tbw = "N/A", "N/A", "N/A"
     try:
         partitions = psutil.disk_partitions()
         partition = next((p for p in partitions if p.mountpoint == mountpoint), None)
         if not partition: return health, lifespan, tbw
-        
+
         disk_name = resolve_to_physical_disk(partition.device)
-        
+
+        cached = smart_cache.get(disk_name)
+        if cached and time.time() - cached.get("ts", 0) < SMART_CACHE_TTL:
+            return tuple(cached["info"])
+
         # Use sudo -n (non-interactive) to avoid blocking on password prompt
         cmd = ["sudo", "-n", "smartctl", "-a", "-j", f"/dev/{disk_name}"]
         result = subprocess.run(cmd, text=True, capture_output=True, timeout=2, stdin=subprocess.DEVNULL)
@@ -304,6 +314,9 @@ def get_smart_info(mountpoint):
                 if used is not None: lifespan = f"{max(0, 100 - used)}%"
                 duw = nvme.get("data_units_written")
                 if duw: tbw = f"{(duw * 512000) / 1e12:.1f}TB"
+        # Cache N/A results too, so a missing smartctl/sudo setup doesn't
+        # trigger the heavy call every refresh
+        smart_cache[disk_name] = {"ts": time.time(), "info": [health, lifespan, tbw]}
     except Exception: pass
     return health, lifespan, tbw
 
@@ -330,6 +343,8 @@ def main():
     history = load_history()
     last_io = history.get('io', {})
     last_time = history.get('timestamp', 0)
+    smart_cache = history.get('smart', {})
+    if not isinstance(smart_cache, dict): smart_cache = {}
     current_time = time.time()
     
     try: current_io = psutil.disk_io_counters(perdisk=True)
@@ -356,7 +371,7 @@ def main():
             if mountpoint == "/": root_usage = used_pct
             
             temp = get_drive_temp(mountpoint)
-            health, lifespan, tbw = get_smart_info(mountpoint)
+            health, lifespan, tbw = get_smart_info(mountpoint, smart_cache)
             
             # I/O Speed
             r_spd, w_spd = 0, 0
@@ -452,7 +467,7 @@ def main():
     lines.append(f"<span foreground='{COLORS['white']}'>{'┈' * tooltip_width}</span>")
     lines.append("󰍽 LMB: File Manager")
 
-    save_history({'io': current_io, 'timestamp': current_time})
+    save_history({'io': current_io, 'timestamp': current_time, 'smart': smart_cache})
 
     print(json.dumps({
         "text": f"{SSD_ICON} {text_span(f'{root_usage}%', get_color(root_usage,'mem_storage'))}",
