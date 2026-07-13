@@ -15,10 +15,12 @@ import psutil
 import subprocess
 import re
 import os
+import sys
 import time
 import shutil
 import pickle
 from collections import deque
+from typing import Literal
 
 import pathlib
 import glob
@@ -153,6 +155,13 @@ def get_rapl_path():
 # ---------------------------------------------------
 # HISTORY
 # ---------------------------------------------------
+def get_boot_id():
+    try:
+        with open("/proc/sys/kernel/random/boot_id") as f:
+            return f.read().strip()
+    except Exception:
+        return None
+
 def load_history():
     try:
         with open(HISTORY_FILE, 'rb') as f:
@@ -160,10 +169,12 @@ def load_history():
     except Exception:
         return {'cpu': deque(maxlen=HISTORY_SIZE), 'per_core': {}}
 
-def save_history(cpu_hist, per_core_hist):
+def save_history(cpu_hist, per_core_hist, rapl_access, rapl_samples):
     try:
         with open(HISTORY_FILE, 'wb') as f:
-            pickle.dump({'cpu': cpu_hist, 'per_core': per_core_hist}, f)
+            pickle.dump({'cpu': cpu_hist, 'per_core': per_core_hist,
+                         'rapl_access': rapl_access, 'rapl_samples': rapl_samples,
+                         'rapl_boot_id': get_boot_id()}, f)
     except Exception:
         pass
 
@@ -173,6 +184,18 @@ def save_history(cpu_hist, per_core_hist):
 history = load_history()
 cpu_history = history.get('cpu', deque(maxlen=HISTORY_SIZE))
 per_core_history = history.get('per_core', {})
+
+# RAPL state is persisted across invocations (waybar re-runs this script every
+# tick, so module-level state alone would re-probe every time). Both the access
+# method and the energy samples are only valid for the current boot: udev
+# permission rules are applied at boot and the energy counters reset.
+if history.get('rapl_boot_id') == get_boot_id():
+    rapl_access = history.get('rapl_access', {})
+    rapl_samples = history.get('rapl_samples', {})
+else:
+    rapl_access, rapl_samples = {}, {}
+if not isinstance(rapl_access, dict): rapl_access = {}
+if not isinstance(rapl_samples, dict): rapl_samples = {}
 
 cpu_name = get_cpu_name()
 max_cpu_temp = 0
@@ -200,53 +223,101 @@ except Exception:
     pass
 
 # Power (RAPL)
-# Reading RAPL energy_uj requires elevated privileges on most systems.
-# We use sudo -n (non-interactive) to avoid blocking on password prompt.
-# Requires sudo NOPASSWD for cat on the energy_uj file.
+# Reading RAPL energy_uj requires elevated privileges on most systems, unless
+# a udev rule makes /sys/class/powercap world-readable. The access method
+# (direct read vs sudo -n cat) is probed once per path and memoized, so a
+# working direct read never falls through to sudo and an unreadable path is
+# not retried every tick. Requires sudo NOPASSWD for cat on the energy_uj
+# file when no udev rule is in place.
+RAPL_SAMPLE_INTERVAL = 1.0  # Min seconds between energy reads; faster is noise
+RAPL_SAMPLE_MAX_AGE = 60.0  # Discard samples older than this (suspend/resume)
+
+# rapl_access is the memoized access decision, keyed by path. It is loaded
+# from the history file above so the probe happens once per boot, not once
+# per waybar tick. RAPL permissions don't change at runtime.
+rapl_access: dict[str, Literal["direct", "sudo", "unavailable"]]
+
+def _read_energy_direct(path):
+    with open(path, "r") as f:
+        return int(f.read().strip())
+
+def _read_energy_sudo(path):
+    # Use sudo -n (non-interactive) to avoid blocking on password prompt.
+    # Use /run/current-system/sw/bin/cat to match NixOS sudoers rule.
+    result = subprocess.run(
+        ["sudo", "-n", "/run/current-system/sw/bin/cat", path],
+        text=True, capture_output=True, timeout=1, stdin=subprocess.DEVNULL
+    )
+    if result.returncode != 0:
+        raise OSError(f"sudo cat {path} failed: {result.stderr.strip()}")
+    return int(result.stdout.strip())
+
+def _mark_rapl_unavailable(path, reason):
+    # Warn once, at the moment the path is disabled; later invocations load
+    # "unavailable" from the cache and return None silently.
+    rapl_access[path] = "unavailable"
+    print(f"waybar-cpu: RAPL disabled for {path}: {reason}", file=sys.stderr)
+
 def read_rapl_energy(path):
-    """Read RAPL energy value, trying direct access first, then sudo."""
-    # Try direct read first (works if udev rule set permissions)
+    """Read RAPL energy value using the memoized access method for path.
+
+    The first call probes direct access, then sudo, and remembers which one
+    worked. If neither works the path is marked unavailable and never retried.
+    """
+    method = rapl_access.get(path)
+    if method == "unavailable":
+        return None
+    if method is not None:
+        try:
+            return _read_energy_direct(path) if method == "direct" else _read_energy_sudo(path)
+        except Exception as e:
+            # A previously working method failing means the file went away or
+            # the setup changed underneath us; don't hammer it every tick.
+            _mark_rapl_unavailable(path, e)
+            return None
+
+    # First call for this path: probe direct access, then sudo.
     try:
-        with open(path, "r") as f:
-            return int(f.read().strip())
+        value = _read_energy_direct(path)
+        rapl_access[path] = "direct"
+        return value
     except PermissionError:
         pass
-    # Fallback to sudo
-    # Use /run/current-system/sw/bin/cat to match NixOS sudoers rule
+    except Exception as e:
+        # Missing file etc. - sudo won't help
+        _mark_rapl_unavailable(path, e)
+        return None
     try:
-        result = subprocess.run(
-            ["sudo", "-n", "/run/current-system/sw/bin/cat", path],
-            text=True, capture_output=True, timeout=1, stdin=subprocess.DEVNULL
-        )
-        if result.returncode == 0:
-            return int(result.stdout.strip())
-    except Exception:
-        pass
-    return None
+        value = _read_energy_sudo(path)
+        rapl_access[path] = "sudo"
+        return value
+    except Exception as e:
+        _mark_rapl_unavailable(path, f"direct read denied and {e}")
+        return None
 
+# Power draw is a delta between two energy samples. Instead of reading twice
+# 50ms apart on every tick, keep one (timestamp, energy) sample per path in
+# the history file and compute the delta against the previous invocation.
 cpu_power = 0.0
 rapl_path = get_rapl_path()
 if rapl_path:
-    try:
-        energy1 = read_rapl_energy(rapl_path)
-        if energy1 is not None:
-            time.sleep(0.05)
-            energy2 = read_rapl_energy(rapl_path)
-            if energy2 is not None:
-                delta = energy2 - energy1
-                # Handle overflow
-                if delta < 0: 
-                    # Try to find max range
+    now = time.time()
+    sample = rapl_samples.get(rapl_path)
+    if sample and now - sample["ts"] < RAPL_SAMPLE_INTERVAL:
+        # Too soon for a meaningful delta; reuse the last computed value
+        cpu_power = sample.get("power", 0.0)
+    else:
+        energy = read_rapl_energy(rapl_path)
+        if energy is not None:
+            if sample and now - sample["ts"] <= RAPL_SAMPLE_MAX_AGE:
+                delta = energy - sample["energy"]
+                # Handle counter wraparound
+                if delta < 0:
                     max_f = os.path.join(os.path.dirname(rapl_path), "max_energy_range_uj")
                     max_e = read_rapl_energy(max_f)
-                    if max_e is not None:
-                        delta = (max_e + energy2) - energy1
-                    else:
-                        delta = (2**32 + energy2) - energy1
-                
-                cpu_power = (delta / 1_000_000) / 0.05
-    except Exception:
-        pass
+                    delta += max_e if max_e is not None else 2**32
+                cpu_power = (delta / 1_000_000) / (now - sample["ts"])
+            rapl_samples[rapl_path] = {"ts": now, "energy": energy, "power": cpu_power}
 
 cpu_percent = psutil.cpu_percent(interval=0.1)
 cpu_history.append(cpu_percent)
@@ -386,7 +457,7 @@ tooltip_lines.append("")
 tooltip_lines.append(f"<span foreground='{COLORS['white']}'>{'┈' * tooltip_width}</span>")
 tooltip_lines.append("󰍽 LMB: Btop")
 
-save_history(cpu_history, per_core_history)
+save_history(cpu_history, per_core_history, rapl_access, rapl_samples)
 
 TERMINAL = os.environ.get("TERMINAL") or shutil.which("alacritty") or "xterm"
 if os.environ.get("WAYBAR_CLICK_TYPE") == "left":
