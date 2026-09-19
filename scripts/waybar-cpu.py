@@ -336,12 +336,23 @@ for i, usage in enumerate(per_core):
         per_core_history[i] = (per_core_history[i] * decay_factor) + (usage * (1 - decay_factor))
 
 def get_core_color(usage):
-    if usage < 20: return "#81c8be"
-    elif usage < 40: return "#a6d189"
-    elif usage < 60: return "#e5c890"
-    elif usage < 80: return "#ef9f76"
-    elif usage < 95: return "#ea999c"
-    else: return "#e78284"
+    # Taken from the theme rather than written here. These were six Catppuccin
+    # Frappe literals, so core and process rows stayed Catppuccin whatever
+    # colors.toml said, while every other coloured value in the module followed
+    # it -- the CPU tooltip was the only one that ignored the user's palette.
+    #
+    # Five of the six have a close counterpart (dE2000 under 5, three under 3).
+    # The exception was #ef9f76, a peach: a sixteen-colour palette has no orange
+    # to match it, and the nearest entry was the same one the band above uses,
+    # which would have merged two bands into one. bright_yellow takes the slot
+    # instead, which is what COLOR_TABLE already puts between yellow and
+    # bright_red, so the ramp keeps six distinct steps.
+    if usage < 20: return COLORS["bright_cyan"]
+    elif usage < 40: return COLORS["green"]
+    elif usage < 60: return COLORS["yellow"]
+    elif usage < 80: return COLORS["bright_yellow"]
+    elif usage < 95: return COLORS["bright_red"]
+    else: return COLORS["red"]
 
 # ---------------------------------------------------
 # TOOLTIP
