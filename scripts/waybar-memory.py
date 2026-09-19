@@ -108,7 +108,7 @@ SECTION_COLORS = {
 
 # Color thresholds for metrics
 COLOR_TABLE = [
-    {"color": COLORS["blue"],           "mem_storage": (0.0, 10), "mem_temp": (0, 40)},
+    {"color": COLORS["bright_cyan"],           "mem_storage": (0.0, 10), "mem_temp": (0, 40)},
     {"color": COLORS["cyan"],           "mem_storage": (10.0, 20), "mem_temp": (41, 50)},
     {"color": COLORS["green"],          "mem_storage": (20.0, 40), "mem_temp": (51, 60)},
     {"color": COLORS["yellow"],         "mem_storage": (40.0, 60), "mem_temp": (61, 70)},
@@ -129,20 +129,6 @@ def get_color(value, metric_type):
             if low <= value <= high:
                 return entry["color"]
     return COLOR_TABLE[-1]["color"]
-
-
-def get_proc_color(value, metric_type):
-    """Colour for a row in a Top Processes list.
-
-    The same bands as the gauges, entering at bright_cyan instead of blue. A
-    process share is almost always inside the first band, so that one colour is
-    what the whole list reads as, and blue sits colder than the rest of the
-    ramp. The gauges keep blue, where a low reading genuinely does mean idle --
-    which is why this is a separate function rather than an edit to
-    COLOR_TABLE, whose blue also colours the bar text.
-    """
-    color = get_color(value, metric_type)
-    return COLORS["bright_cyan"] if color == COLORS["blue"] else color
 
 
 # ---------------------------------------------------
@@ -468,7 +454,7 @@ try:
                     mem_str = f"{rss_kb / 1024:.0f}MB"
                 else:
                     mem_str = f"{rss_kb}KB"
-                color = get_proc_color(mem_pct, 'mem_storage')
+                color = get_color(mem_pct, 'mem_storage')
                 tooltip_lines.append(f" • {name:<18} {span(f'{mem_pct:>5.1f}% ({mem_str})', color)}")
                 count += 1
             except Exception:

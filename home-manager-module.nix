@@ -203,6 +203,23 @@ in
       example = "yazi";
     };
 
+    cpuTdp = lib.mkOption {
+      type = lib.types.nullOr lib.types.number;
+      default = null;
+      example = 15;
+      description = ''
+        CPU TDP in watts. The Power row in the CPU tooltip is coloured by the
+        share of this that the chip is currently drawing, so the row reads the
+        same on a 15W laptop part as on a 125W desktop one.
+
+        Left null, the script reads RAPL's long-term power limit. That is the
+        right number where firmware sets it honestly and a generic default
+        where it does not -- a 15W part reporting 100W is common, and pegs the
+        row to the lowest band forever. Nothing in sysfs distinguishes the two
+        cases, so set this if the Power row never changes colour.
+      '';
+    };
+
     clickCommands = lib.mkOption {
       type = lib.types.attrsOf lib.types.str;
       default = { };
@@ -359,7 +376,7 @@ in
     programs.waybar-system-monitors.waybarConfig = {
       "custom/cpu" = lib.mkIf cfg.enableCpu (mkMonitor {
         bin = "waybar-cpu";
-        args = " --display=${cfg.cpuDisplay}${lib.optionalString cfg.plain " --plain"}${clickHintArg "cpu"}";
+        args = " --display=${cfg.cpuDisplay}${lib.optionalString cfg.plain " --plain"}${clickHintArg "cpu"}${lib.optionalString (cfg.cpuTdp != null) " --cpu-tdp ${toString cfg.cpuTdp}"}";
         interval = resolveInterval cfg.cpuInterval 2;
         extra.on-click = cfg.clickCommands.cpu or "${cfg.terminal} -e btop";
       });

@@ -38,6 +38,11 @@ parser.add_argument("--click-hint", default='Btop',
                     help="Label for the left-click hint at the foot of the "
                          "tooltip. Set this when on-click is overridden, or "
                          "the hint advertises what the bar no longer does.")
+parser.add_argument('--cpu-tdp', type=float, default=0.0,
+                    help='CPU TDP in watts, used to colour the Power row as a '
+                         'share of it. 0 reads the RAPL long-term limit, which '
+                         'firmware often reports as a generic default far above '
+                         'the real figure, so setting this explicitly is worth it.')
 args = parser.parse_args()
 
 def span(text, color):
@@ -105,13 +110,13 @@ cpu_header_color = HEADER_COLORS.get("cpu", COLORS["red"])
 SECTION_COLORS = {"CPU": {"icon": cpu_header_color, "text": cpu_header_color}}
 
 COLOR_TABLE = [
-    {"color": COLORS["blue"],           "cpu_gpu_temp": (0, 35),   "cpu_power": (0.0, 30)},
-    {"color": COLORS["cyan"],           "cpu_gpu_temp": (36, 45),  "cpu_power": (31.0, 60)},
-    {"color": COLORS["green"],          "cpu_gpu_temp": (46, 54),  "cpu_power": (61.0, 90)},
-    {"color": COLORS["yellow"],         "cpu_gpu_temp": (55, 65),  "cpu_power": (91.0, 120)},
-    {"color": COLORS["bright_yellow"],  "cpu_gpu_temp": (66, 75),  "cpu_power": (121.0,150)},
-    {"color": COLORS["bright_red"],     "cpu_gpu_temp": (76, 85),  "cpu_power": (151.0,180)},
-    {"color": COLORS["red"],            "cpu_gpu_temp": (86, 999), "cpu_power": (181.0,999)}
+    {"color": COLORS["bright_cyan"],           "cpu_gpu_temp": (0, 35),   "cpu_power": (0.0, 30), "cpu_pct": (0.0, 20)},
+    {"color": COLORS["cyan"],           "cpu_gpu_temp": (36, 45),  "cpu_power": (31.0, 60), "cpu_pct": (21, 40)},
+    {"color": COLORS["green"],          "cpu_gpu_temp": (46, 54),  "cpu_power": (61.0, 90), "cpu_pct": (41, 60)},
+    {"color": COLORS["yellow"],         "cpu_gpu_temp": (55, 65),  "cpu_power": (91.0, 120), "cpu_pct": (61, 75)},
+    {"color": COLORS["bright_yellow"],  "cpu_gpu_temp": (66, 75),  "cpu_power": (121.0,150), "cpu_pct": (76, 85)},
+    {"color": COLORS["bright_red"],     "cpu_gpu_temp": (76, 85),  "cpu_power": (151.0,180), "cpu_pct": (86, 95)},
+    {"color": COLORS["red"],            "cpu_gpu_temp": (86, 999), "cpu_power": (181.0,999), "cpu_pct": (96, 999)}
 ]
 
 def get_color(value, metric_type):
@@ -141,6 +146,27 @@ def get_cpu_name():
     except Exception:
         pass
     return "Unknown CPU"
+
+def get_cpu_tdp():
+    """Watts to treat as 100% for the Power row.
+
+    --cpu-tdp wins. Otherwise the RAPL long-term power limit, which is the
+    right value where firmware sets it honestly -- and a generic default where
+    it does not: a 15W laptop part can report 100W here, which would peg the
+    row to the bottom band forever. There is no way to tell the two apart from
+    sysfs, which is why the argument exists.
+    """
+    if args.cpu_tdp > 0:
+        return args.cpu_tdp
+    try:
+        with open("/sys/class/powercap/intel-rapl:0/constraint_0_power_limit_uw") as f:
+            watts = int(f.read().strip()) / 1_000_000
+            if watts > 0:
+                return watts
+    except Exception:
+        pass
+    return 45.0
+
 
 def get_rapl_path():
     # Find the energy_uj file for package-0 (CPU)
@@ -363,10 +389,15 @@ header_line = (
 )
 tooltip_lines = []
 
+# Watts stay on the label; the colour tracks the share of TDP, so the row
+# means the same thing on a 15W laptop part as on a 125W desktop one.
+cpu_tdp = get_cpu_tdp()
+cpu_pwr_pct = (cpu_power / cpu_tdp * 100) if cpu_tdp > 0 else 0
+
 cpu_rows = [
-    ("󱐋", f"Clock Speed: {span(f'{current_freq/1000:>5.2f}GHz', get_color((current_freq/max_freq*100) if max_freq > 0 else 0, 'cpu_power'))} / {max_freq/1000:.2f}GHz"),
+    ("󱐋", f"Clock Speed: {span(f'{current_freq/1000:>5.2f}GHz', get_color((current_freq/max_freq*100) if max_freq > 0 else 0, 'cpu_pct'))} / {max_freq/1000:.2f}GHz"),
     ("󰔏", f"Temperature: {span(f'{max_cpu_temp:>3}°C', get_color(max_cpu_temp,'cpu_gpu_temp'))}"),
-    ("󰚥", f"Power: {span(f'{cpu_power:>6.1f}W', get_color(cpu_power,'cpu_power'))}"),
+    ("󰚥", f"Power: {span(f'{cpu_power:>6.1f}W', get_color(cpu_pwr_pct, 'cpu_pct'))}"),
     ("󰓅", f"Utilization: {span(f'{cpu_percent:>3.0f}%', get_color(cpu_percent,'cpu_power'))}")
 ]
 
@@ -486,7 +517,7 @@ if os.environ.get("WAYBAR_CLICK_TYPE") == "left":
 
 # Build display text based on --display argument
 temp_color = get_color(max_cpu_temp, 'cpu_gpu_temp')
-percent_color = get_color(cpu_percent, 'cpu_power')
+percent_color = get_color(cpu_percent, 'cpu_pct')
 
 if args.display == "temp":
     display_text = f"{CPU_ICON_GENERAL} {text_span(f'{max_cpu_temp}°C', temp_color)}"

@@ -93,7 +93,7 @@ def load_theme_colors():
 COLORS, HEADER_COLORS = load_theme_colors()
 
 COLOR_TABLE = [
-    {"color": COLORS["blue"],           "cpu_gpu_temp": (0, 35),   "gpu_power": (0.0, 20)},
+    {"color": COLORS["bright_cyan"],           "cpu_gpu_temp": (0, 35),   "gpu_power": (0.0, 20)},
     {"color": COLORS["cyan"],           "cpu_gpu_temp": (36, 45),  "gpu_power": (21, 40)},
     {"color": COLORS["green"],          "cpu_gpu_temp": (46, 54),  "gpu_power": (41, 60)},
     {"color": COLORS["yellow"],         "cpu_gpu_temp": (55, 65),  "gpu_power": (61, 75)},
@@ -110,20 +110,6 @@ def get_color(value, metric_type):
             low, high = entry[metric_type]
             if low <= value <= high: return entry["color"]
     return COLOR_TABLE[-1]["color"]
-
-
-def get_proc_color(value, metric_type):
-    """Colour for a row in a Top Processes list.
-
-    The same bands as the gauges, entering at bright_cyan instead of blue. A
-    process share is almost always inside the first band, so that one colour is
-    what the whole list reads as, and blue sits colder than the rest of the
-    ramp. The gauges keep blue, where a low reading genuinely does mean idle --
-    which is why this is a separate function rather than an edit to
-    COLOR_TABLE, whose blue also colours the bar text.
-    """
-    color = get_color(value, metric_type)
-    return COLORS["bright_cyan"] if color == COLORS["blue"] else color
 
 
 # ---------------------------------------------------
@@ -851,7 +837,7 @@ def main():
                 mem = p.get('mem', 0)
                 if mem > 0:
                     mem_p = (mem / vram_total * 100)
-                    color = get_proc_color(mem_p, 'gpu_power')
+                    color = get_color(mem_p, 'gpu_power')
                     process_lines.append(f" • {name:<18} {span(f'{mem_p:>5.1f}% ({mem}MB)', color)}")
                 else:
                     process_lines.append(f" • {name:<18}")
@@ -865,11 +851,11 @@ def main():
                 if total_activity > 0 and gpu_percent > 0:
                     # Distribute GPU utilization based on relative engine activity
                     rel_pct = (activity / total_activity) * gpu_percent
-                    color = get_proc_color(rel_pct, 'gpu_power')
+                    color = get_color(rel_pct, 'gpu_power')
                     process_lines.append(f" • {name:<18} {span(f'~{rel_pct:>4.1f}%', color)}")
                 else:
                     # No activity data, just show as active
-                    color = get_proc_color(gpu_percent, 'gpu_power')
+                    color = get_color(gpu_percent, 'gpu_power')
                     process_lines.append(f" • {name:<18} {span('active', color)}")
     else:
         process_lines.append(" • No GPU processes detected")

@@ -108,7 +108,7 @@ SECTION_COLORS = {
 }
 
 COLOR_TABLE = [
-    {"color": COLORS["blue"],           "mem_storage": (0.0, 10),  "drive_temp": (0, 35)},
+    {"color": COLORS["bright_cyan"],           "mem_storage": (0.0, 10),  "drive_temp": (0, 35)},
     {"color": COLORS["cyan"],           "mem_storage": (10.0, 20), "drive_temp": (36, 45)},
     {"color": COLORS["green"],          "mem_storage": (20.0, 40), "drive_temp": (46, 54)},
     {"color": COLORS["yellow"],         "mem_storage": (40.0, 60), "drive_temp": (55, 60)},
