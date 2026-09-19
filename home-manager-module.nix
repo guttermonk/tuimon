@@ -47,6 +47,13 @@ let
       tooltip = true;
     } // extra;
 
+  # A hint label reaches the script as an argument rather than being baked in,
+  # so that overriding a module's on-click can correct what its tooltip claims.
+  # Quoted because the labels have spaces in them ("File Manager").
+  clickHintArg = name:
+    lib.optionalString (cfg.clickHints ? ${name})
+      " --click-hint \"${cfg.clickHints.${name}}\"";
+
   # Known TUI file managers that need to be wrapped in a terminal
   tuiFileManagers = [ "yazi" "ranger" "lf" "nnn" "mc" "vifm" "fff" ];
   isTuiFileManager = lib.elem cfg.fileManager tuiFileManagers;
@@ -222,6 +229,26 @@ in
       '';
     };
 
+    clickHints = lib.mkOption {
+      type = lib.types.attrsOf lib.types.str;
+      default = { };
+      example = lib.literalExpression ''
+        {
+          memory = "Btop (by memory)";
+          gpu = "intel_gpu_top";
+        }
+      '';
+      description = ''
+        Label for the "LMB:" hint at the foot of each tooltip, keyed by module
+        name as <option>clickCommands</option> is. Unset modules keep the stock
+        wording: "Btop" for cpu, memory and gpu, "File Manager" for storage.
+
+        Worth setting whenever <option>clickCommands</option> is, since the
+        hint is otherwise a claim the bar no longer honours -- the tooltip goes
+        on advertising btop while the click opens something else.
+      '';
+    };
+
     continuous = lib.mkOption {
       type = lib.types.bool;
       default = false;
@@ -332,14 +359,14 @@ in
     programs.waybar-system-monitors.waybarConfig = {
       "custom/cpu" = lib.mkIf cfg.enableCpu (mkMonitor {
         bin = "waybar-cpu";
-        args = " --display=${cfg.cpuDisplay}${lib.optionalString cfg.plain " --plain"}";
+        args = " --display=${cfg.cpuDisplay}${lib.optionalString cfg.plain " --plain"}${clickHintArg "cpu"}";
         interval = resolveInterval cfg.cpuInterval 2;
         extra.on-click = cfg.clickCommands.cpu or "${cfg.terminal} -e btop";
       });
 
       "custom/memory" = lib.mkIf cfg.enableMemory (mkMonitor {
         bin = "waybar-memory";
-        args = lib.optionalString cfg.plain " --plain";
+        args = lib.optionalString cfg.plain " --plain" + clickHintArg "memory";
         interval = resolveInterval cfg.memoryInterval 3;
         # The tooltip's last line reads "LMB: Btop" unconditionally, so without
         # this the hint was true of cpu, gpu and storage and a lie here.
@@ -348,14 +375,14 @@ in
 
       "custom/gpu" = lib.mkIf cfg.enableGpu (mkMonitor {
         bin = "waybar-gpu";
-        args = " --display=${cfg.gpuDisplay}${lib.optionalString cfg.plain " --plain"}";
+        args = " --display=${cfg.gpuDisplay}${lib.optionalString cfg.plain " --plain"}${clickHintArg "gpu"}";
         interval = resolveInterval cfg.gpuInterval 2;
         extra.on-click = cfg.clickCommands.gpu or "${cfg.terminal} -e btop";
       });
 
       "custom/storage" = lib.mkIf cfg.enableStorage (mkMonitor {
         bin = "waybar-storage";
-        args = lib.optionalString cfg.plain " --plain";
+        args = lib.optionalString cfg.plain " --plain" + clickHintArg "storage";
         interval = resolveInterval cfg.storageInterval 60;
         extra.on-click = cfg.clickCommands.storage or fileManagerCommand;
       });

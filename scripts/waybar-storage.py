@@ -28,6 +28,10 @@ import argparse
 parser = argparse.ArgumentParser(description='Waybar Storage monitor')
 parser.add_argument('--plain', action='store_true',
                     help='Output plain text without Pango color markup (for CSS styling)')
+parser.add_argument("--click-hint", default='File Manager',
+                    help="Label for the left-click hint at the foot of the "
+                         "tooltip. Set this when on-click is overridden, or "
+                         "the hint advertises what the bar no longer does.")
 args = parser.parse_args()
 
 def span(text, color):
@@ -465,7 +469,7 @@ def main():
     lines.insert(0, f"<span foreground='{COLORS['white']}'>{'─' * tooltip_width}</span>")
     
     lines.append(f"<span foreground='{COLORS['white']}'>{'┈' * tooltip_width}</span>")
-    lines.append("󰍽 LMB: File Manager")
+    lines.append(f"󰍽 LMB: {args.click_hint}")
 
     save_history({'io': current_io, 'timestamp': current_time, 'smart': smart_cache})
 

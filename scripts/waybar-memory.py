@@ -24,6 +24,10 @@ import shutil
 parser = argparse.ArgumentParser(description='Waybar Memory monitor')
 parser.add_argument('--plain', action='store_true',
                     help='Output plain text without Pango color markup (for CSS styling)')
+parser.add_argument("--click-hint", default='Btop',
+                    help="Label for the left-click hint at the foot of the "
+                         "tooltip. Set this when on-click is overridden, or "
+                         "the hint advertises what the bar no longer does.")
 args = parser.parse_args()
 
 def span(text, color):
@@ -455,7 +459,7 @@ except Exception:
 
 tooltip_lines.append("")
 tooltip_lines.append(f"<span foreground='{COLORS['white']}'>{'┈' * tooltip_width}</span>")
-tooltip_lines.append("󰍽 LMB: Btop")
+tooltip_lines.append(f"󰍽 LMB: {args.click_hint}")
 
 # Handle click events
 TERMINAL = os.environ.get("TERMINAL") or shutil.which("alacritty") or "xterm"

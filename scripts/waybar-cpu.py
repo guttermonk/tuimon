@@ -34,6 +34,10 @@ parser.add_argument('--display', choices=['temp', 'percent', 'both'], default='t
                     help='What to display: temp, percent, or both')
 parser.add_argument('--plain', action='store_true',
                     help='Output plain text without Pango color markup (for CSS styling)')
+parser.add_argument("--click-hint", default='Btop',
+                    help="Label for the left-click hint at the foot of the "
+                         "tooltip. Set this when on-click is overridden, or "
+                         "the hint advertises what the bar no longer does.")
 args = parser.parse_args()
 
 def span(text, color):
@@ -455,7 +459,7 @@ tooltip_lines.insert(0, "─" * tooltip_width)
 
 tooltip_lines.append("")
 tooltip_lines.append(f"<span foreground='{COLORS['white']}'>{'┈' * tooltip_width}</span>")
-tooltip_lines.append("󰍽 LMB: Btop")
+tooltip_lines.append(f"󰍽 LMB: {args.click_hint}")
 
 save_history(cpu_history, per_core_history, rapl_access, rapl_samples)
 
