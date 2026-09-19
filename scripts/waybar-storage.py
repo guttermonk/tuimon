@@ -403,6 +403,25 @@ def main():
     )
     lines = []
 
+    # Space between the two columns, once column 1 has been padded out.
+    COL1_GUTTER = 2
+
+    # Two-column rows are filled in after the loop rather than as they are
+    # built: the width of column 1 has to come from the widest of its cells
+    # across every drive, which is not known until all of them are formatted.
+    # It used to be a constant of 20, which was exactly the length of the
+    # longest possible "Size: <used> / <total>" -- so a drive that reached it
+    # got no gutter at all and the two columns ran together.
+    #
+    # The measured text includes the leading icon, because that is what the
+    # rendered line carries; measuring without it made the column two wider
+    # than the arithmetic believed.
+    two_col = []  # (index into lines, plain col1 text, col1 markup, col2 markup)
+
+    def add_two_col(text, left, right):
+        two_col.append((len(lines), text, left, right))
+        lines.append(None)  # resolved below, before any width is measured
+
     for entry in storage_entries:
         c_temp = get_color(entry['temp'], "drive_temp") if entry['temp'] else COLORS["bright_black"]
         c_usage = get_color(entry['pct'], "mem_storage")
@@ -411,16 +430,14 @@ def main():
         # Header: Name
         lines.append(f"<span foreground='{COLORS['white']}'><b>{entry['name']}</b></span>")
         
-        # Fixed column width for two-column alignment
-        COL1_WIDTH = 20
-        
         # Row 1: Size | Temperature
         used_str = f"{entry['used_gb']:>4.0f}GB" if entry['used_gb'] < 1000 else f"{entry['used_gb']/1024:>4.1f}TB"
         total_str = f"{entry['total_gb']:.0f}GB" if entry['total_gb'] < 1000 else f"{entry['total_gb']/1024:.0f}TB"
         temp_str = f"{entry['temp']:>3}°C" if entry['temp'] else " N/A"
-        col1 = f"Size: {used_str} / {total_str}"
-        col1_pad = ' ' * max(0, COL1_WIDTH - len(col1))
-        lines.append(f"󰆼 Size: {span(used_str, c_usage)} / {total_str}{col1_pad} 󰔏 Temp: {span(temp_str, c_temp)}")
+        add_two_col(
+            f"󰆼 Size: {used_str} / {total_str}",
+            f"󰆼 Size: {span(used_str, c_usage)} / {total_str}",
+            f"󰔏 Temp: {span(temp_str, c_temp)}")
         
         # Row 2: Health | Lifespan/TBW
         lifespan_str = entry['lifespan'] if entry['lifespan'] != "N/A" else None
@@ -428,26 +445,36 @@ def main():
         health_val = entry['health']
         
         if lifespan_str:
-            col1 = f"Health: {health_val}"
-            col1_pad = ' ' * max(0, COL1_WIDTH - len(col1))
-            lines.append(f"󰕥 Health: {span(health_val, health_c)}{col1_pad} 󰣐 Lifespan: {span(lifespan_str, c_usage)}")
+            add_two_col(
+                f"󰕥 Health: {health_val}",
+                f"󰕥 Health: {span(health_val, health_c)}",
+                f"󰣐 Lifespan: {span(lifespan_str, c_usage)}")
         elif tbw_str:
-            col1 = f"Health: {health_val}"
-            col1_pad = ' ' * max(0, COL1_WIDTH - len(col1))
-            lines.append(f"󰕥 Health: {span(health_val, health_c)}{col1_pad} 󰩹 TBW: {span(tbw_str, c_usage)}")
+            add_two_col(
+                f"󰕥 Health: {health_val}",
+                f"󰕥 Health: {span(health_val, health_c)}",
+                f"󰩹 TBW: {span(tbw_str, c_usage)}")
         elif health_val != "N/A":
             lines.append(f"󰕥 Health: {span(health_val, health_c)}")
         
         # Row 3: Read | Write
         rs = format_compact(entry['r_spd'], "/s")
         ws = format_compact(entry['w_spd'], "/s")
-        col1 = f"Read: {rs}"
-        col1_pad = ' ' * max(0, COL1_WIDTH - len(col1))
-        lines.append(f"󰛶 Read: {span(rs, COLORS['blue'])}{col1_pad} 󰛴 Write: {span(ws, COLORS['green'])}")
+        add_two_col(
+            f"󰛶 Read: {rs}",
+            f"󰛶 Read: {span(rs, COLORS['blue'])}",
+            f"󰛴 Write: {span(ws, COLORS['green'])}")
         
         # Usage Bar - will be sized after calculating tooltip width
         lines.append(f"__BAR_PLACEHOLDER__|{entry['pct']}|{c_usage}")
         lines.append("")
+
+    # Pad column 1 to its widest cell plus the gutter, so the columns can
+    # never touch however long a drive's figures turn out to be.
+    if two_col:
+        col1_width = max(len(t) for _, t, _, _ in two_col) + COL1_GUTTER
+        for i, text, left, right in two_col:
+            lines[i] = left + " " * (col1_width - len(text)) + right
 
     # Calculate tooltip width based on all content including header
     # Header is rendered at size 14000, body at size 11000, so scale header width accordingly
