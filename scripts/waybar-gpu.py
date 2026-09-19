@@ -94,12 +94,12 @@ COLORS, HEADER_COLORS = load_theme_colors()
 
 COLOR_TABLE = [
     {"color": COLORS["bright_cyan"],           "cpu_gpu_temp": (0, 35),   "gpu_power": (0.0, 20)},
-    {"color": COLORS["cyan"],           "cpu_gpu_temp": (36, 45),  "gpu_power": (21, 40)},
-    {"color": COLORS["green"],          "cpu_gpu_temp": (46, 54),  "gpu_power": (41, 60)},
-    {"color": COLORS["yellow"],         "cpu_gpu_temp": (55, 65),  "gpu_power": (61, 75)},
-    {"color": COLORS["bright_yellow"],  "cpu_gpu_temp": (66, 75),  "gpu_power": (76, 85)},
-    {"color": COLORS["bright_red"],     "cpu_gpu_temp": (76, 85),  "gpu_power": (86, 95)},
-    {"color": COLORS["red"],            "cpu_gpu_temp": (86, 999), "gpu_power": (96, 999)}
+    {"color": COLORS["cyan"],           "cpu_gpu_temp": (36, 45),  "gpu_power": (20.0, 40)},
+    {"color": COLORS["green"],          "cpu_gpu_temp": (46, 54),  "gpu_power": (40.0, 60)},
+    {"color": COLORS["yellow"],         "cpu_gpu_temp": (55, 65),  "gpu_power": (60.0, 75)},
+    {"color": COLORS["bright_yellow"],  "cpu_gpu_temp": (66, 75),  "gpu_power": (75.0, 85)},
+    {"color": COLORS["bright_red"],     "cpu_gpu_temp": (76, 85),  "gpu_power": (85.0, 95)},
+    {"color": COLORS["red"],            "cpu_gpu_temp": (86, 999), "gpu_power": (95.0, 999)}
 ]
 
 def get_color(value, metric_type):

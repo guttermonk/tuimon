@@ -39,7 +39,7 @@ parser.add_argument("--click-hint", default='Btop',
                          "tooltip. Set this when on-click is overridden, or "
                          "the hint advertises what the bar no longer does.")
 parser.add_argument('--cpu-tdp', type=float, default=0.0,
-                    help='CPU TDP in watts, used to colour the Power row as a '
+                    help='CPU TDP in watts, used to color the Power row as a '
                          'share of it. 0 reads the RAPL long-term limit, which '
                          'firmware often reports as a generic default far above '
                          'the real figure, so setting this explicitly is worth it.')
@@ -110,13 +110,13 @@ cpu_header_color = HEADER_COLORS.get("cpu", COLORS["red"])
 SECTION_COLORS = {"CPU": {"icon": cpu_header_color, "text": cpu_header_color}}
 
 COLOR_TABLE = [
-    {"color": COLORS["bright_cyan"],           "cpu_gpu_temp": (0, 35),   "cpu_power": (0.0, 30), "cpu_pct": (0.0, 20)},
-    {"color": COLORS["cyan"],           "cpu_gpu_temp": (36, 45),  "cpu_power": (31.0, 60), "cpu_pct": (21, 40)},
-    {"color": COLORS["green"],          "cpu_gpu_temp": (46, 54),  "cpu_power": (61.0, 90), "cpu_pct": (41, 60)},
-    {"color": COLORS["yellow"],         "cpu_gpu_temp": (55, 65),  "cpu_power": (91.0, 120), "cpu_pct": (61, 75)},
-    {"color": COLORS["bright_yellow"],  "cpu_gpu_temp": (66, 75),  "cpu_power": (121.0,150), "cpu_pct": (76, 85)},
-    {"color": COLORS["bright_red"],     "cpu_gpu_temp": (76, 85),  "cpu_power": (151.0,180), "cpu_pct": (86, 95)},
-    {"color": COLORS["red"],            "cpu_gpu_temp": (86, 999), "cpu_power": (181.0,999), "cpu_pct": (96, 999)}
+    {"color": COLORS["bright_cyan"],           "cpu_gpu_temp": (0, 35),   "cpu_pct": (0.0, 20)},
+    {"color": COLORS["cyan"],           "cpu_gpu_temp": (36, 45),  "cpu_pct": (20.0, 40)},
+    {"color": COLORS["green"],          "cpu_gpu_temp": (46, 54),  "cpu_pct": (40.0, 60)},
+    {"color": COLORS["yellow"],         "cpu_gpu_temp": (55, 65),  "cpu_pct": (60.0, 75)},
+    {"color": COLORS["bright_yellow"],  "cpu_gpu_temp": (66, 75),  "cpu_pct": (75.0, 85)},
+    {"color": COLORS["bright_red"],     "cpu_gpu_temp": (76, 85),  "cpu_pct": (85.0, 95)},
+    {"color": COLORS["red"],            "cpu_gpu_temp": (86, 999), "cpu_pct": (95.0, 999)}
 ]
 
 def get_color(value, metric_type):
@@ -364,11 +364,11 @@ for i, usage in enumerate(per_core):
 def get_core_color(usage):
     # Taken from the theme rather than written here. These were six Catppuccin
     # Frappe literals, so core and process rows stayed Catppuccin whatever
-    # colors.toml said, while every other coloured value in the module followed
+    # colors.toml said, while every other colored value in the module followed
     # it -- the CPU tooltip was the only one that ignored the user's palette.
     #
     # Five of the six have a close counterpart (dE2000 under 5, three under 3).
-    # The exception was #ef9f76, a peach: a sixteen-colour palette has no orange
+    # The exception was #ef9f76, a peach: a sixteen-color palette has no orange
     # to match it, and the nearest entry was the same one the band above uses,
     # which would have merged two bands into one. bright_yellow takes the slot
     # instead, which is what COLOR_TABLE already puts between yellow and
@@ -389,16 +389,21 @@ header_line = (
 )
 tooltip_lines = []
 
-# Watts stay on the label; the colour tracks the share of TDP, so the row
+# Watts stay on the label; the color tracks the share of TDP, so the row
 # means the same thing on a 15W laptop part as on a 125W desktop one.
 cpu_tdp = get_cpu_tdp()
 cpu_pwr_pct = (cpu_power / cpu_tdp * 100) if cpu_tdp > 0 else 0
 
+# Clock speed is stated, not graded. The other three rows are severity
+# readings where a high number is worse; a high clock is the chip doing its
+# job, so running it through the ramp painted a healthy turbo red. Blue is
+# the one palette entry no ramp uses now that they all enter at bright_cyan,
+# so it carries no severity meaning here.
 cpu_rows = [
-    ("󱐋", f"Clock Speed: {span(f'{current_freq/1000:>5.2f}GHz', get_color((current_freq/max_freq*100) if max_freq > 0 else 0, 'cpu_pct'))} / {max_freq/1000:.2f}GHz"),
+    ("󱐋", f"Clock Speed: {span(f'{current_freq/1000:>5.2f}GHz', COLORS["blue"])} / {max_freq/1000:.2f}GHz"),
     ("󰔏", f"Temperature: {span(f'{max_cpu_temp:>3}°C', get_color(max_cpu_temp,'cpu_gpu_temp'))}"),
     ("󰚥", f"Power: {span(f'{cpu_power:>6.1f}W', get_color(cpu_pwr_pct, 'cpu_pct'))}"),
-    ("󰓅", f"Utilization: {span(f'{cpu_percent:>3.0f}%', get_color(cpu_percent,'cpu_power'))}")
+    ("󰓅", f"Utilization: {span(f'{cpu_percent:>3.0f}%', get_color(cpu_percent, 'cpu_pct'))}")
 ]
 
 for icon, text_row in cpu_rows:

@@ -208,7 +208,7 @@ in
       default = null;
       example = 15;
       description = ''
-        CPU TDP in watts. The Power row in the CPU tooltip is coloured by the
+        CPU TDP in watts. The Power row in the CPU tooltip is colored by the
         share of this that the chip is currently drawing, so the row reads the
         same on a 15W laptop part as on a 125W desktop one.
 
@@ -216,7 +216,7 @@ in
         right number where firmware sets it honestly and a generic default
         where it does not -- a 15W part reporting 100W is common, and pegs the
         row to the lowest band forever. Nothing in sysfs distinguishes the two
-        cases, so set this if the Power row never changes colour.
+        cases, so set this if the Power row never changes color.
       '';
     };
 
