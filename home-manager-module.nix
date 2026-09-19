@@ -196,6 +196,32 @@ in
       example = "yazi";
     };
 
+    clickCommands = lib.mkOption {
+      type = lib.types.attrsOf lib.types.str;
+      default = { };
+      example = lib.literalExpression ''
+        {
+          memory = "kitty --class btop -e btop -c /path/to/btop-memory.conf";
+          storage = "thunar ~";
+        }
+      '';
+      description = ''
+        Command a left click runs, per module. Keys are "cpu", "memory", "gpu"
+        and "storage"; a module not named here keeps its default, which is btop
+        in <option>terminal</option> for cpu, memory and gpu, and
+        <option>fileManager</option> for storage.
+
+        <option>terminal</option> only chooses which terminal, not how it is
+        invoked, so this is the escape hatch for everything else: passing btop
+        a different config file (say, one that sorts by memory, for the module
+        where that is the question being asked), adding the window class and
+        title flags a compositor's rules key off, or going through a wrapper
+        script. Those cannot be expressed upstream because the flags differ per
+        terminal -- kitty and alacritty take --class where foot takes --app-id
+        -- and a btop config has to come from the user's own.
+      '';
+    };
+
     continuous = lib.mkOption {
       type = lib.types.bool;
       default = false;
@@ -308,7 +334,7 @@ in
         bin = "waybar-cpu";
         args = " --display=${cfg.cpuDisplay}${lib.optionalString cfg.plain " --plain"}";
         interval = resolveInterval cfg.cpuInterval 2;
-        extra.on-click = "${cfg.terminal} -e btop";
+        extra.on-click = cfg.clickCommands.cpu or "${cfg.terminal} -e btop";
       });
 
       "custom/memory" = lib.mkIf cfg.enableMemory (mkMonitor {
@@ -317,21 +343,21 @@ in
         interval = resolveInterval cfg.memoryInterval 3;
         # The tooltip's last line reads "LMB: Btop" unconditionally, so without
         # this the hint was true of cpu, gpu and storage and a lie here.
-        extra.on-click = "${cfg.terminal} -e btop";
+        extra.on-click = cfg.clickCommands.memory or "${cfg.terminal} -e btop";
       });
 
       "custom/gpu" = lib.mkIf cfg.enableGpu (mkMonitor {
         bin = "waybar-gpu";
         args = " --display=${cfg.gpuDisplay}${lib.optionalString cfg.plain " --plain"}";
         interval = resolveInterval cfg.gpuInterval 2;
-        extra.on-click = "${cfg.terminal} -e btop";
+        extra.on-click = cfg.clickCommands.gpu or "${cfg.terminal} -e btop";
       });
 
       "custom/storage" = lib.mkIf cfg.enableStorage (mkMonitor {
         bin = "waybar-storage";
         args = lib.optionalString cfg.plain " --plain";
         interval = resolveInterval cfg.storageInterval 60;
-        extra.on-click = fileManagerCommand;
+        extra.on-click = cfg.clickCommands.storage or fileManagerCommand;
       });
     };
   };
