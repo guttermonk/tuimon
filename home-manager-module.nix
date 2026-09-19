@@ -315,6 +315,9 @@ in
         bin = "waybar-memory";
         args = lib.optionalString cfg.plain " --plain";
         interval = resolveInterval cfg.memoryInterval 3;
+        # The tooltip's last line reads "LMB: Btop" unconditionally, so without
+        # this the hint was true of cpu, gpu and storage and a lie here.
+        extra.on-click = "${cfg.terminal} -e btop";
       });
 
       "custom/gpu" = lib.mkIf cfg.enableGpu (mkMonitor {
