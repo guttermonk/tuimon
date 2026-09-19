@@ -455,10 +455,16 @@ tooltip_lines.extend(active_core_lines)
 tooltip_lines.extend(process_lines)
 
 # Insert top rule at beginning
-tooltip_lines.insert(0, "─" * tooltip_width)
+# The rule under the header is an underline stretched over spaces, not
+# a run of box-drawing glyphs: those leave a hairline gap at every
+# character boundary, where an underline is one unbroken stroke.
+# line_height trims the space above the stroke and rise lifts it,
+# adding space below. line_height needs Pango 1.50 or newer.
+tooltip_lines.insert(0, f"<span line_height='0.15' rise='8000' "
+                        f"underline='single'>{' ' * tooltip_width}</span>")
 
 tooltip_lines.append("")
-tooltip_lines.append(f"<span foreground='{COLORS['white']}'>{'┈' * tooltip_width}</span>")
+tooltip_lines.append("─" * tooltip_width)
 tooltip_lines.append(f"󰍽 LMB: {args.click_hint}")
 
 save_history(cpu_history, per_core_history, rapl_access, rapl_samples)

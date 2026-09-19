@@ -466,9 +466,15 @@ def main():
             lines[i] = f"{SSD_ICON} {bar}{span(f'{pct:>3}%', color)}"
     
     # Insert top rule at beginning
-    lines.insert(0, f"<span foreground='{COLORS['white']}'>{'─' * tooltip_width}</span>")
+    # The rule under the header is an underline stretched over spaces, not
+    # a run of box-drawing glyphs: those leave a hairline gap at every
+    # character boundary, where an underline is one unbroken stroke.
+    # line_height trims the space above the stroke and rise lifts it,
+    # adding space below. line_height needs Pango 1.50 or newer.
+    lines.insert(0, f"<span line_height='0.15' rise='8000' "
+                    f"underline='single'>{' ' * tooltip_width}</span>")
     
-    lines.append(f"<span foreground='{COLORS['white']}'>{'┈' * tooltip_width}</span>")
+    lines.append("─" * tooltip_width)
     lines.append(f"󰍽 LMB: {args.click_hint}")
 
     save_history({'io': current_io, 'timestamp': current_time, 'smart': smart_cache})
