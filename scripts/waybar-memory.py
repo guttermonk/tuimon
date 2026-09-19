@@ -130,6 +130,21 @@ def get_color(value, metric_type):
                 return entry["color"]
     return COLOR_TABLE[-1]["color"]
 
+
+def get_proc_color(value, metric_type):
+    """Colour for a row in a Top Processes list.
+
+    The same bands as the gauges, entering at bright_cyan instead of blue. A
+    process share is almost always inside the first band, so that one colour is
+    what the whole list reads as, and blue sits colder than the rest of the
+    ramp. The gauges keep blue, where a low reading genuinely does mean idle --
+    which is why this is a separate function rather than an edit to
+    COLOR_TABLE, whose blue also colours the bar text.
+    """
+    color = get_color(value, metric_type)
+    return COLORS["bright_cyan"] if color == COLORS["blue"] else color
+
+
 # ---------------------------------------------------
 # HARDWARE DETECTION
 # ---------------------------------------------------
@@ -453,7 +468,7 @@ try:
                     mem_str = f"{rss_kb / 1024:.0f}MB"
                 else:
                     mem_str = f"{rss_kb}KB"
-                color = get_color(mem_pct, 'mem_storage')
+                color = get_proc_color(mem_pct, 'mem_storage')
                 tooltip_lines.append(f" • {name:<18} {span(f'{mem_pct:>5.1f}% ({mem_str})', color)}")
                 count += 1
             except Exception:
