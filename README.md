@@ -410,6 +410,53 @@ cyan = "#81c8be"
 white = "#a5adce"
 ```
 
+The colors are read on every tick, so editing the file is enough — nothing to
+restart, and a module picks it up on its next refresh.
+
+### Following the wallpaper
+
+A second file is layered over the first if it exists:
+
+```
+${XDG_CACHE_HOME:-~/.cache}/wallust/colors-tuimon.toml
+```
+
+It is for tools that recolor the desktop from the current wallpaper at run
+time — [wallust](https://codeberg.org/explosion-mental/wallust), pywal — which
+rewrite their output on every wallpaper change and have no business owning your
+config file. Point such a tool's template at that path and the monitors follow
+along with the rest of the desktop. Set `TUIMON_COLORS_OVERLAY` to read it from
+somewhere else instead.
+
+The format is the same, and the merge is per key: an overlay carrying only
+`[colors.normal]` leaves the bright set and the header mapping from
+`colors.toml` alone. An absent or empty overlay means "just use the palette",
+which is what you want for every theme that is not wallpaper-derived.
+
+A wallust template for it looks like:
+
+```toml
+[colors.normal]
+black = "{{color0}}"
+red = "{{color1}}"
+green = "{{color2}}"
+yellow = "{{color3}}"
+blue = "{{color4}}"
+magenta = "{{color5}}"
+cyan = "{{color6}}"
+white = "{{color7}}"
+
+[colors.bright]
+black = "{{color8}}"
+red = "{{color9}}"
+green = "{{color10}}"
+yellow = "{{color11}}"
+blue = "{{color12}}"
+magenta = "{{color13}}"
+cyan = "{{color14}}"
+white = "{{color15}}"
+```
+
 ## Fonts
 
 The tooltips use Nerd Font icons. Make sure you have a Nerd Font installed, such as:
