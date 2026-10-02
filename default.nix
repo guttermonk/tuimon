@@ -25,6 +25,12 @@ stdenvNoCC.mkDerivation {
       fi
     done
 
+    # Imported rather than executed, so it gets no wrapper and no executable
+    # bit. It has to land in this same directory: the monitors are run by path,
+    # which puts their own directory first on sys.path, and tuimon-loop.py sits
+    # here too so the continuous variants resolve the import the same way.
+    install -Dm644 tuimon_colors.py "$out/share/waybar-system-monitors/tuimon_colors.py"
+
     # Create wrapper scripts with proper PATH
     makeWrapper ${python3.withPackages (ps: with ps; [ psutil ])}/bin/python3 $out/bin/waybar-cpu \
       --add-flags "$out/share/waybar-system-monitors/waybar-cpu.py" \

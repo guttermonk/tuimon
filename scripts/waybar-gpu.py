@@ -9,7 +9,6 @@
 import json
 import subprocess
 import os
-import pathlib
 import glob
 import re
 import argparse
@@ -65,30 +64,9 @@ def calc_tooltip_width(lines, min_width=30):
 # ---------------------------------------------------
 # THEME & COLORS
 # ---------------------------------------------------
-try:
-    import tomllib
-except ImportError:
-    tomllib = None
-
-def load_theme_colors():
-    theme_path = pathlib.Path.home() / ".config/waybar/colors.toml"
-    defaults = {
-        "black": "#000000", "red": "#ff0000", "green": "#00ff00", "yellow": "#ffff00",
-        "blue": "#0000ff", "magenta": "#ff00ff", "cyan": "#00ffff", "white": "#ffffff",
-        "bright_black": "#555555", "bright_red": "#ff5555", "bright_green": "#55ff55",
-        "bright_yellow": "#ffff55", "bright_blue": "#5555ff", "bright_magenta": "#ff55ff",
-        "bright_cyan": "#55ffff", "bright_white": "#ffffff"
-    }
-    headers = {}
-    if not tomllib or not theme_path.exists(): return defaults, headers
-    try:
-        data = tomllib.loads(theme_path.read_text())
-        colors = data.get("colors", {})
-        normal = colors.get("normal", {})
-        bright = colors.get("bright", {})
-        headers = colors.get("headers", {})
-        return {**defaults, **normal, **{f"bright_{k}": v for k, v in bright.items()}}, headers
-    except Exception: return defaults, headers
+# One loader for all four monitors, in tuimon_colors.py beside this script --
+# see its docstring for the files it reads.
+from tuimon_colors import load_theme_colors
 
 COLORS, HEADER_COLORS = load_theme_colors()
 
