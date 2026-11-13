@@ -109,36 +109,65 @@ def clean_gpu_name(name):
             break
     return name.strip()
 
-def detect_gpu_vendor():
-    """Detect which GPU vendor is present. Returns 'nvidia', 'amd', 'intel', or None."""
-    # Check for Nvidia
+PCI_VENDOR_IDS = {"0x10de": "nvidia", "0x1002": "amd", "0x8086": "intel"}
+
+# Fixed order, and deliberately not "busiest first". These decide the column
+# order in the tooltip, and a tooltip whose columns swap places when the load
+# shifts is one you have to re-read every time you open it.
+VENDOR_ORDER = ["nvidia", "amd", "intel"]
+
+def pci_display_devices():
+    """Every PCI display controller, as {vendor: sysfs path}.
+
+    Walks /sys/bus/pci rather than /sys/class/drm because the question is
+    which hardware exists, not which of it has a DRM node -- and because the
+    old nvidia probe shelled out to nvidia-smi, which RESUMES a runtime-
+    suspended discrete GPU just to answer. On a hybrid laptop that is a
+    wake-up every poll interval, for a card that is usually doing nothing.
+    """
+    found = {}
+    for dev in sorted(glob.glob("/sys/bus/pci/devices/*")):
+        try:
+            with open(os.path.join(dev, "class")) as f:
+                # 0x03xxxx is the display-controller class: 0x030000 VGA,
+                # 0x030200 "3D controller", which is what an Optimus discrete
+                # GPU reports -- matching only VGA would miss it entirely.
+                if not f.read().strip().startswith("0x03"):
+                    continue
+            with open(os.path.join(dev, "vendor")) as f:
+                vendor = PCI_VENDOR_IDS.get(f.read().strip())
+            if vendor and vendor not in found:
+                found[vendor] = dev
+        except Exception: pass
+    return found
+
+def detect_gpus():
+    """Vendors present, in VENDOR_ORDER. A list now, not a first match.
+
+    The old version returned the FIRST vendor it found and stopped, which on a
+    hybrid laptop meant reporting the discrete card and never looking at the
+    integrated one -- so the bar sat at 0% all day while the iGPU did all the
+    rendering.
+    """
+    found = pci_display_devices()
+    return [v for v in VENDOR_ORDER if v in found]
+
+def gpu_power_state(vendor):
+    """Runtime PM state of a GPU: 'active', 'suspended', or None if unknown.
+
+    This is the field that actually says something about a discrete GPU on a
+    laptop. Utilization cannot: 0% reads the same whether the card is parked
+    in D3cold or awake and idling at a few watts, and only one of those is
+    costing you battery.
+    """
+    dev = pci_display_devices().get(vendor)
+    if not dev:
+        return None
     try:
-        subprocess.check_output(["nvidia-smi", "--query-gpu=name", "--format=csv,noheader"], 
-                                stderr=subprocess.DEVNULL)
-        return "nvidia"
-    except Exception: pass
-    
-    # Check for AMD (amdgpu driver)
-    amd_paths = glob.glob("/sys/class/drm/card*/device/vendor")
-    for path in amd_paths:
-        try:
-            with open(path) as f:
-                vendor = f.read().strip()
-                if vendor == "0x1002":  # AMD vendor ID
-                    return "amd"
-        except Exception: pass
-    
-    # Check for Intel
-    intel_paths = glob.glob("/sys/class/drm/card*/device/vendor")
-    for path in intel_paths:
-        try:
-            with open(path) as f:
-                vendor = f.read().strip()
-                if vendor == "0x8086":  # Intel vendor ID
-                    return "intel"
-        except Exception: pass
-    
-    return None
+        with open(os.path.join(dev, "power", "runtime_status")) as f:
+            return f.read().strip()
+    except Exception:
+        return None
 
 def get_drm_card_path(vendor_id):
     """Find the DRM card path for a specific vendor."""
@@ -160,6 +189,25 @@ def get_nvidia_stats():
     gpu_name = "Nvidia GPU"
     gpu_tdp = 250.0
     procs = []
+
+    # Asleep: report that, and do NOT run nvidia-smi.
+    #
+    # Every nvidia-smi call resumes a runtime-suspended card, so a monitor
+    # polling every few seconds can be the reason the GPU never sleeps -- the
+    # measurement causing the thing it reports. The sysfs read above is free
+    # and wakes nothing.
+    state = gpu_power_state("nvidia")
+    if state == "suspended":
+        return {
+            "vendor": "nvidia",
+            "name": gpu_name,
+            "icon": GPU_ICON_NVIDIA,
+            "state": state,
+            "percent": 0, "temp": 0, "power": 0.0, "tdp": gpu_tdp,
+            "fan": 0, "has_fan": True,
+            "vram_used": 0, "vram_total": 0,
+            "procs": []
+        }
 
     try:
         # Get Name and Power Limit
@@ -204,6 +252,7 @@ def get_nvidia_stats():
         "vendor": "nvidia",
         "name": gpu_name,
         "icon": GPU_ICON_NVIDIA,
+        "state": state,
         "percent": gpu_percent,
         "temp": gpu_temp,
         "power": gpu_power,
@@ -724,33 +773,49 @@ def generate_gpu_graphic(stats):
 # ---------------------------------------------------
 # MAIN
 # ---------------------------------------------------
-def main():
-    # Detect and get stats for available GPU
-    vendor = detect_gpu_vendor()
-    
-    if vendor == "nvidia":
-        stats = get_nvidia_stats()
-    elif vendor == "amd":
-        stats = get_amd_stats()
-    elif vendor == "intel":
-        stats = get_intel_stats()
-    else:
-        # No GPU detected
-        print(json.dumps({
-            "text": f"{GPU_ICON} N/A",
-            "tooltip": "No supported GPU detected",
-            "class": "gpu"
-        }))
-        return
+STATS_FOR_VENDOR = {
+    "nvidia": lambda: get_nvidia_stats(),
+    "amd": lambda: get_amd_stats(),
+    "intel": lambda: get_intel_stats(),
+}
 
-    if not stats:
-        print(json.dumps({
-            "text": f"{GPU_ICON} N/A",
-            "tooltip": f"Could not read {vendor} GPU stats",
-            "class": "gpu"
-        }))
-        return
+def pad_to(line, width):
+    """Pad a line to a visible width, ignoring Pango markup."""
+    return line + " " * max(0, width - len(strip_pango(line)))
 
+def compose_columns(blocks, gutter=3):
+    """Stand GPU blocks next to each other, section by section.
+
+    Row-by-row is the obvious implementation and it is wrong. The cards do not
+    describe themselves in the same number of lines -- the discrete one has a
+    fan and a power state, the integrated one has a shared-memory line and
+    neither of those -- so a straight zip starts one column's graphic a row
+    above the other's, and the process lists after it are offset too.
+
+    Aligning per section instead means each part begins on the same row in
+    every column, and only the ragged END of a section is padded out.
+    """
+    sep = " " * gutter
+    out = []
+    section_count = max(len(b["sections"]) for b in blocks)
+    for s in range(section_count):
+        parts = [b["sections"][s] if s < len(b["sections"]) else [] for b in blocks]
+        height = max(len(p) for p in parts)
+        if s:
+            out.append("")
+        for i in range(height):
+            row = [pad_to(p[i] if i < len(p) else "", b["width"])
+                   for p, b in zip(parts, blocks)]
+            out.append(sep.join(row).rstrip())
+    return out
+
+def build_gpu_block(stats):
+    """One GPU's column: its header, its body lines, and the width it needs.
+
+    This was all inlined in main() when there was only ever one GPU to
+    describe. It is a function so the same block can be built per card and the
+    results stood side by side.
+    """
     gpu_temp = stats["temp"]
     gpu_percent = stats["percent"]
     gpu_power = stats["power"]
@@ -795,6 +860,14 @@ def main():
         f"󰚥 Power: {span(f'{gpu_power:>6.1f}W', get_color(pwr_pct, 'gpu_power'))}",
         f"󰓅 Utilization: {span(f'{gpu_percent:>3}%', get_color(gpu_percent, 'gpu_power'))}",
     ])
+
+    # Runtime PM state, when the kernel has one for this card. Reported next to
+    # utilization because it is what makes a 0% reading mean something: parked
+    # in D3cold and costing nothing, or awake and idling on your battery.
+    state = stats.get("state")
+    if state:
+        state_color = COLORS["cyan"] if state == "suspended" else get_color(gpu_percent, 'gpu_power')
+        tooltip_lines.append(f"󰒳 State: {span(f'{state:>9}', state_color)}")
 
     # Fan speed (only show if GPU has a fan)
     has_fan = stats.get("has_fan", fan_speed > 0 or stats["vendor"] == "nvidia")
@@ -853,15 +926,22 @@ def main():
     # Apply centering to graphic lines
     centered_graphic = [f"{center_padding}{line}" for line in graphic]
 
-    tooltip_lines.extend([
-        "",
-        "\n".join(centered_graphic),
-        ""
-    ])
+    # Snapshot of the readings before the graphic is appended, so the column
+    # composer has them as a group of their own.
+    stat_lines = list(tooltip_lines)
+
+    # The graphic goes in line by line rather than as one string with newlines
+    # in it. Identical once the block is joined, but a multi-line element
+    # cannot be stood beside anything: column composition works a row at a
+    # time, and a row that is secretly eight rows breaks the alignment of
+    # every row after it.
+    tooltip_lines.append("")
+    tooltip_lines.extend(centered_graphic)
+    tooltip_lines.append("")
 
     # Add process lines
     tooltip_lines.extend(process_lines)
-    
+
     # Insert top rule at beginning
     # The rule under the header is an underline stretched over spaces, not
     # a run of box-drawing glyphs: those leave a hairline gap at every
@@ -870,10 +950,65 @@ def main():
     # adding space below. line_height needs Pango 1.50 or newer.
     tooltip_lines.insert(0, f"<span line_height='0.15' rise='8000' "
                             f"underline='single'>{' ' * tooltip_width}</span>")
-    
-    tooltip_lines.extend([
+
+    # `lines` is the single-GPU layout, unchanged. `sections` is the same
+    # content in the three groups compose_columns aligns on: the rule and the
+    # readings, the card graphic, the process list.
+    return {
+        "header": header_line,
+        "lines": tooltip_lines,
+        "sections": [
+            [tooltip_lines[0]] + stat_lines,
+            centered_graphic,
+            process_lines,
+        ],
+        "width": tooltip_width,
+    }
+
+def main():
+    stats_list = []
+    for vendor in detect_gpus():
+        try:
+            stats = STATS_FOR_VENDOR[vendor]()
+        except Exception:
+            stats = None
+        if stats:
+            stats_list.append(stats)
+
+    if not stats_list:
+        print(json.dumps({
+            "text": f"{GPU_ICON} N/A",
+            "tooltip": "No supported GPU detected",
+            "class": "gpu"
+        }))
+        return
+
+    blocks = [build_gpu_block(s) for s in stats_list]
+
+    if len(blocks) == 1:
+        # Single GPU: byte-for-byte the old layout, header at 14000 over a
+        # body at 11000.
+        block = blocks[0]
+        body_lines = list(block["lines"])
+        total_width = block["width"]
+        head = f"<span size='14000'>{block['header']}</span>\n"
+    else:
+        # Two or more: each card keeps its own block, and they stand side by
+        # side. The headers drop to body size and go bold instead, because
+        # mixing 14000 and 11000 on one row makes the columns disagree about
+        # where they start -- the padding before the second header is measured
+        # in one size and the body below it in another, so the heading sits
+        # off its own column. Bold at body size is exact.
+        header_row = "   ".join(pad_to(f"<b>{b['header']}</b>", b["width"]) for b in blocks).rstrip()
+        body_lines = [header_row] + compose_columns(blocks)
+        total_width = sum(b["width"] for b in blocks) + 3 * (len(blocks) - 1)
+        head = ""
+
+    # One footer across the whole tooltip, however many columns it has: the
+    # rule and the click hint describe the module, not a card.
+    body_lines.extend([
         "",
-        "─" * tooltip_width,
+        "─" * total_width,
         f"󰍽 LMB: {args.click_hint}"
     ])
 
@@ -881,13 +1016,21 @@ def main():
     click_type = os.environ.get("WAYBAR_CLICK_TYPE")
     if click_type == "right":
         # Could open vendor-specific control panel
-        pass 
+        pass
 
-    # Build display text based on --display argument
+    # The bar shows the GPU doing the most work. On a hybrid laptop that is
+    # the integrated one almost always, and the discrete one exactly when it
+    # matters -- which is the only moment its number is worth the space.
+    # max() keeps the first on a tie, so a fully idle machine shows the card
+    # earliest in VENDOR_ORDER rather than flickering between two zeroes.
+    shown = max(stats_list, key=lambda s: s["percent"])
+    gpu_temp = shown["temp"]
+    gpu_percent = shown["percent"]
+    die_temp_color = get_color(gpu_temp, 'cpu_gpu_temp')
     percent_color = get_color(gpu_percent, 'gpu_power')
-    
-    icon_text = f"<span size='21000' rise='-3000'>{stats['icon']}</span>" if not args.plain else stats['icon']
-    
+
+    icon_text = f"<span size='21000' rise='-3000'>{shown['icon']}</span>" if not args.plain else shown['icon']
+
     if args.display == "temp":
         display_text = f"{icon_text} {text_span(f'{gpu_temp}°C', die_temp_color)}"
     elif args.display == "percent":
@@ -897,9 +1040,9 @@ def main():
 
     print(json.dumps({
         "text": display_text,
-        "tooltip": f"<span size='14000'>{header_line}</span>\n<span size='11000'>{chr(10).join(tooltip_lines)}</span>",
+        "tooltip": f"{head}<span size='11000'>{chr(10).join(body_lines)}</span>",
         "markup": "pango",
-        "class": f"gpu gpu-{stats['vendor']}"
+        "class": f"gpu gpu-{shown['vendor']}"
     }))
 
 if __name__ == "__main__":
