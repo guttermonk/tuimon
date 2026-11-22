@@ -300,19 +300,49 @@ def get_smart_info(mountpoint, smart_cache):
 # MAIN LOGIC
 # ---------------------------------------------------
 def get_drives():
-    drives = []
-    # Auto-detect physical drives
+    # One entry per DEVICE, not per mountpoint.
+    #
+    # psutil reports a partition per mounted filesystem, and a btrfs layout
+    # mounts several subvolumes of the SAME filesystem: / and /home on the
+    # machine this was found on, both /dev/mapper/luks-494a7ef8. Appending one
+    # drive per mountpoint therefore drew the same disk twice, with identical
+    # size, temperature, health, lifespan and I/O in both panels -- every one
+    # of those figures is read from the device, so there was nothing to tell
+    # the two apart. Bind mounts do the same thing.
+    #
+    # Keyed on p.device rather than on os.stat(mountpoint).st_dev, which is the
+    # test this obviously wants and is the one that does not work: btrfs gives
+    # every subvolume its own anonymous device number, so / and /home report
+    # st_dev 40 and 46 while sharing one physical disk. The device string is
+    # what they actually have in common.
+    #
+    # The shortest mountpoint wins, so the root of a filesystem is kept over
+    # anything nested inside it and / keeps its "Root" name. Ties -- two bind
+    # mounts at the same depth -- are broken alphabetically so the choice does
+    # not flip between runs when /proc/self/mounts is reordered.
+    #
+    # A real second disk is untouched: different device, its own entry. ZFS
+    # datasets likewise, since each dataset carries its own source string.
+    keep = {}
     for p in psutil.disk_partitions():
         # Allow /run/media and /media for USB drives, exclude other system paths
         if p.mountpoint.startswith('/run/media/') or p.mountpoint.startswith('/media/'):
             pass  # Allow these mountpoints
         elif any(x in p.mountpoint for x in ['/snap', '/boot', '/docker', '/var', '/run', '/sys', '/proc', '/dev', '/nix']): continue
         if any(x in p.device for x in ['/loop']): continue
-        
+
         if p.fstype in ['ext4', 'btrfs', 'xfs', 'ntfs', 'vfat', 'apfs', 'zfs', 'exfat']:
-            name = "Root" if p.mountpoint == "/" else os.path.basename(p.mountpoint)
-            icon = SSD_ICON # Default icon
-            drives.append((name, p.mountpoint, icon))
+            best = keep.get(p.device)
+            if best is None or (len(p.mountpoint), p.mountpoint) < (len(best), best):
+                keep[p.device] = p.mountpoint
+
+    # Insertion order, so the list still follows /proc/self/mounts and the root
+    # filesystem stays first where it was first.
+    drives = []
+    for mountpoint in keep.values():
+        name = "Root" if mountpoint == "/" else os.path.basename(mountpoint)
+        icon = SSD_ICON # Default icon
+        drives.append((name, mountpoint, icon))
     return drives
 
 def main():
