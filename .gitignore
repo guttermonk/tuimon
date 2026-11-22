@@ -1,0 +1,7 @@
+# Python bytecode caches, regenerated on demand
+__pycache__/
+*.pyc
+
+# nix build output symlinks
+result
+result-*
